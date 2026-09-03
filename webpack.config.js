@@ -35,6 +35,7 @@ module.exports = {
     new CleanWebpackPlugin(),
     new HtmlWebpackPlugin({
       template: 'index.html',
+      favicon: './assets/icon.png',
     }),
     new webpack.DefinePlugin({
       'process.env.AMAP_KEY': JSON.stringify(process.env.AMAP_KEY),

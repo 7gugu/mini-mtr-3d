@@ -9,6 +9,7 @@ import { Timeline } from './ui/Timeline';
 import { AlertBubbles } from './ui/AlertBubbles';
 import { TrainPopup } from './ui/TrainPopup';
 import { StationPopup } from './ui/StationPopup';
+import { AboutPanel } from './ui/AboutPanel';
 import { getServiceDayStart, SERVICE_DAY_SPAN_MS, mapThemeAt, MapTheme } from './hktime';
 import { lineInfoMap, lineMetas, stationDisplayName } from './hk_mtr_data';
 import {
@@ -374,6 +375,7 @@ AMapLoader.load({
         editorToggle.classList.toggle('active');
     };
     document.body.appendChild(editorToggle);
+    new AboutPanel();
 
     const glLayer = new AMap.GLCustomLayer({
         zIndex: 110,
@@ -493,7 +495,7 @@ AMapLoader.load({
             return;
         }
         const target = origin.target as HTMLElement | null;
-        if (target?.closest('.ui-panel, .editor-toggle, .alert-bubble, .train-popup, .station-popup')) {
+        if (target?.closest('.ui-panel, .editor-toggle, .about-toggle, .about-overlay, .alert-bubble, .train-popup, .station-popup')) {
             return;
         }
         pointerInside = true;

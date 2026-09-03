@@ -19,6 +19,8 @@
 :root {
     /* 铁宋风格宋体链 */
     --font-serif-mtr: "MTR Sung", "鐵宋", "MTRSong", "Chiron Sung HK", "Noto Serif TC", "Songti HK", "PMingLiU", serif;
+    /* 黑体 */
+    --font-heiti: "Heiti SC", "Heiti TC", "STHeiti", "PingFang SC", "PingFang HK", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
     /* 点状像素字体链 (数字) */
     --font-dot: "Dotted Songti Square", "DotGothic16", "Courier New", monospace;
     /* 霓虹辉光色 */
@@ -251,6 +253,96 @@ body.theme-night, html.theme-night, body.theme-night #container {
     border-radius: 50%;
     font-size: 18px;
     z-index: 1000;
+}
+
+.about-toggle {
+    position: absolute;
+    right: 20px;
+    bottom: 76px;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 11px;
+    font-family: var(--font-heiti);
+    font-weight: 700;
+    letter-spacing: 1px;
+    z-index: 1000;
+}
+
+.about-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(2, 6, 23, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.about-card {
+    position: relative;
+    width: min(440px, calc(100vw - 48px));
+    max-height: min(80vh, 560px);
+    overflow-y: auto;
+    padding: 22px 24px 20px;
+}
+
+.about-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.about-close:hover {
+    color: #fff;
+}
+
+.about-title {
+    font-family: var(--font-heiti);
+    font-size: 20px;
+    margin: 0 28px 6px 0;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.about-byline {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: #94a3b8;
+    font-family: var(--font-heiti);
+}
+
+.about-byline a,
+.about-body a {
+    color: #7dd3fc;
+    text-decoration: none;
+}
+
+.about-byline a:hover,
+.about-body a:hover {
+    text-decoration: underline;
+}
+
+.about-body p {
+    margin: 0 0 12px;
+    font-family: var(--font-heiti);
+    font-size: 14px;
+    line-height: 1.75;
+    color: #e2e8f0;
+}
+
+.about-body p:last-child {
+    margin-bottom: 0;
 }
 
 /* --- 左上角: 时钟 + 天气 --- */
