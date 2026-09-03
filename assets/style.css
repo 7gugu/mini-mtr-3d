@@ -599,3 +599,48 @@ body, html, #container {
 .alert-card-link:hover {
     text-decoration: underline;
 }
+
+/* --- 选中列车信息框 --- */
+.train-popup {
+    position: absolute;
+    transform: translate(-50%, calc(-100% - 6px));
+    pointer-events: none;
+    z-index: 950;
+    display: flex;
+    background: rgba(0, 0, 0, 0.78);
+    border-radius: 4px;
+    overflow: hidden;
+    color: #fff;
+    font-family: var(--font-serif-mtr);
+    white-space: nowrap;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+}
+
+.train-popup-bar {
+    width: 5px;
+    background: var(--line-color, #00ccff);
+    flex-shrink: 0;
+}
+
+.train-popup-body {
+    padding: 8px 12px 8px 10px;
+}
+
+.train-popup-line {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.train-popup-dir {
+    font-size: 12px;
+    color: #f8fafc;
+    margin-bottom: 6px;
+}
+
+.train-popup-stop {
+    font-size: 12px;
+    color: #e5e7eb;
+    line-height: 1.5;
+}

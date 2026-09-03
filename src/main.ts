@@ -7,6 +7,7 @@ import { RealtimeManager } from './mtr/RealtimeManager';
 import { ClockPanel } from './ui/ClockPanel';
 import { Timeline } from './ui/Timeline';
 import { AlertBubbles } from './ui/AlertBubbles';
+import { TrainPopup } from './ui/TrainPopup';
 import { getServiceDayStart, SERVICE_DAY_SPAN_MS } from './hktime';
 import { lineInfoMap, lineMetas, stationDisplayName } from './hk_mtr_data';
 import '../assets/style.css';
@@ -93,6 +94,10 @@ AMapLoader.load({
     const clockPanel = new ClockPanel();
     const timeline = new Timeline(playback);
     const alertBubbles = new AlertBubbles(map, lineInfoMap);
+    const trainPopup = new TrainPopup();
+    let selectedTrainId: string | null = null;
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
 
     // 实时模式切换: 只有实时状态才轮询政府 API
     playback.onModeChange = (mode) => {
@@ -122,6 +127,8 @@ AMapLoader.load({
 
         // 1. Cleanup Trains
         if (fleet) { fleet.disposeAll(); fleet = null; }
+        selectedTrainId = null;
+        trainPopup.hide();
 
         // 2. Cleanup Tracks & Stations
         scene.remove(...trackMeshes);
@@ -319,6 +326,32 @@ AMapLoader.load({
 
     map.add(glLayer);
 
+    map.on('click', (e: any) => {
+        if (!camera || !fleet) {
+            return;
+        }
+        const origin = e.originEvent as MouseEvent | undefined;
+        if (!origin) {
+            return;
+        }
+        const target = origin.target as HTMLElement | null;
+        if (target?.closest('.ui-panel, .editor-toggle, .alert-bubble, .train-popup')) {
+            return;
+        }
+
+        const rect = document.getElementById('container')!.getBoundingClientRect();
+        pointerNdc.x = ((origin.clientX - rect.left) / rect.width) * 2 - 1;
+        pointerNdc.y = -((origin.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointerNdc, camera);
+
+        const hit = fleet.pick(raycaster);
+        selectedTrainId = hit ? hit.trip.trainId : null;
+        fleet.syncSelection(selectedTrainId);
+        if (!selectedTrainId) {
+            trainPopup.hide();
+        }
+    });
+
     // 初始 UI 状态
     clockPanel.setLive(playback.isLive);
     clockPanel.setTime(playback.currentTime);
@@ -340,7 +373,19 @@ AMapLoader.load({
 
         const simTime = playback.currentTime;
 
-        if (fleet) fleet.update(simTime);
+        if (fleet && camera) {
+            fleet.update(simTime);
+            const selected = selectedTrainId ? fleet.getActive(selectedTrainId) : undefined;
+            if (!selected || !selected.active) {
+                selectedTrainId = null;
+                fleet.syncSelection(null);
+                trainPopup.hide();
+            } else {
+                fleet.syncSelection(selectedTrainId);
+                const box = document.getElementById('container')!;
+                trainPopup.follow(selected, camera, box.clientWidth, box.clientHeight);
+            }
+        }
         clockPanel.setTime(simTime);
         timeline.render();
         if (playback.isLive) alertBubbles.updatePositions();

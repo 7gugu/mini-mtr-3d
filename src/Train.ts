@@ -8,18 +8,29 @@ const TRAIN_L = 240;
 const TRAIN_H = 60;
 const TRAIN_ALTITUDE = 35;
 
+export interface TrainStopInfo {
+    prevStationId: string;
+    prevTime: number;
+    nextStationId: string;
+    nextTime: number;
+    destStationId: string;
+}
+
 export class Train {
     map: AMap.Map;
     customCoords: any;
 
     trip: TrainTrip;
     tracks: Record<string, TrackGeometry>;
+    colorHex: string;
 
     // Use injected smoothed cache or local cache
     trackCoordsCache: Map<string, number[][]>;
 
     mesh: THREE.Mesh;
+    outline: THREE.Mesh;
     active: boolean = false;
+    stopInfo: TrainStopInfo | null = null;
 
     constructor(
         map: AMap.Map,
@@ -33,6 +44,7 @@ export class Train {
         this.customCoords = customCoords;
         this.trip = trip;
         this.tracks = tracks;
+        this.colorHex = colorHex;
         this.trackCoordsCache = new Map();
 
         // Populate cache from injected smoothed paths if available
@@ -52,8 +64,21 @@ export class Train {
         });
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.renderOrder = 3;
+        this.mesh.userData.train = this;
         // Initially hide until valid time
         this.mesh.visible = false;
+
+        const outlineMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            depthTest: false,
+        });
+        this.outline = new THREE.Mesh(
+            new THREE.BoxGeometry(TRAIN_W * 1.16, TRAIN_L * 1.06, TRAIN_H * 1.2),
+            outlineMat
+        );
+        this.outline.renderOrder = 2.5;
+        this.outline.visible = false;
+        this.mesh.add(this.outline);
 
         // Pre-convert coordinates for relevant tracks ONLY if not already cached
         this.trip.legs.forEach(leg => {
@@ -79,6 +104,25 @@ export class Train {
     dispose() {
         this.mesh.geometry.dispose();
         (this.mesh.material as THREE.Material).dispose();
+        this.outline.geometry.dispose();
+        (this.outline.material as THREE.Material).dispose();
+    }
+
+    setSelected(selected: boolean) {
+        this.outline.visible = selected;
+    }
+
+    getPopupAnchor(): THREE.Vector3 {
+        return new THREE.Vector3(
+            this.mesh.position.x,
+            this.mesh.position.y,
+            this.mesh.position.z + TRAIN_H / 2 + 28
+        );
+    }
+
+    applyColor(colorHex: string) {
+        this.colorHex = colorHex;
+        (this.mesh.material as THREE.MeshBasicMaterial).color.set(colorHex);
     }
 
     /**
@@ -90,6 +134,7 @@ export class Train {
         const legs = this.trip.legs;
         if (!legs || legs.length === 0) {
             this.mesh.visible = false;
+            this.stopInfo = null;
             return null;
         }
 
@@ -110,12 +155,14 @@ export class Train {
             // 未发车或已终到
             this.mesh.visible = false;
             this.active = false;
+            this.stopInfo = null;
             return null;
         }
 
         const currentLeg = legs[legIdx];
         this.mesh.visible = true;
         this.active = true;
+        this.stopInfo = this.buildStopInfo(legs, legIdx, mode, offsetMs);
 
         const progress = mode === 'dwell'
             ? 1
@@ -184,5 +231,34 @@ export class Train {
         const last = path[path.length-1];
         const prev = path[path.length-2];
         return { x: last[0], y: last[1], angle: Math.atan2(last[1]-prev[1], last[0]-prev[0]) };
+    }
+
+    private buildStopInfo(
+        legs: TripLeg[],
+        legIdx: number,
+        mode: 'run' | 'dwell',
+        offsetMs: number
+    ): TrainStopInfo {
+        const currentLeg = legs[legIdx];
+        const destStationId = legs[legs.length - 1].toStationId;
+
+        if (mode === 'run') {
+            return {
+                prevStationId: currentLeg.fromStationId,
+                prevTime: currentLeg.departureTime + offsetMs,
+                nextStationId: currentLeg.toStationId,
+                nextTime: currentLeg.arrivalTime + offsetMs,
+                destStationId,
+            };
+        }
+
+        const nextLeg = legs[legIdx + 1];
+        return {
+            prevStationId: currentLeg.toStationId,
+            prevTime: currentLeg.arrivalTime + offsetMs,
+            nextStationId: nextLeg ? nextLeg.toStationId : '',
+            nextTime: nextLeg ? nextLeg.arrivalTime + offsetMs : currentLeg.arrivalTime + offsetMs,
+            destStationId,
+        };
     }
 }

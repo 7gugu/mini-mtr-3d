@@ -65,7 +65,9 @@ export class FleetManager {
     rebuild() {
         this.disposeAll();
         this.buildWindows();
-    }    private spawn(win: TripWindow): Train {
+    }
+
+    private spawn(win: TripWindow): Train {
         const pool = this.pools.get(win.trip.lineId || '_default');
         let train = pool && pool.pop();
         if (!train) {
@@ -78,7 +80,8 @@ export class FleetManager {
             // 复用: 更新班次与配色
             train.trip = win.trip;
             train.tracks = this.railData.tracks;
-            (train.mesh.material as THREE.MeshBasicMaterial).color.set(win.color);
+            train.applyColor(win.color);
+            train.setSelected(false);
         }
         train.trip = win.trip;
         this.active.set(win.trip.trainId, train);
@@ -90,6 +93,8 @@ export class FleetManager {
         if (!train) return;
         train.mesh.visible = false;
         train.active = false;
+        train.setSelected(false);
+        train.stopInfo = null;
         const key = train.trip.lineId || '_default';
         let pool = this.pools.get(key);
         if (!pool) { pool = []; this.pools.set(key, pool); }
@@ -133,5 +138,40 @@ export class FleetManager {
 
     getActiveCount(): number {
         return this.active.size;
+    }
+
+    getActive(trainId: string): Train | undefined {
+        return this.active.get(trainId);
+    }
+
+    syncSelection(trainId: string | null) {
+        this.active.forEach((train, id) => {
+            train.setSelected(id === trainId);
+        });
+    }
+
+    pick(raycaster: THREE.Raycaster): Train | null {
+        const meshes: THREE.Object3D[] = [];
+        this.active.forEach(train => {
+            if (train.mesh.visible) {
+                meshes.push(train.mesh);
+            }
+        });
+        if (meshes.length === 0) {
+            return null;
+        }
+        const hits = raycaster.intersectObjects(meshes, true);
+        if (hits.length === 0) {
+            return null;
+        }
+        let obj: THREE.Object3D | null = hits[0].object;
+        while (obj) {
+            const train = obj.userData.train as Train | undefined;
+            if (train) {
+                return train;
+            }
+            obj = obj.parent;
+        }
+        return null;
     }
 }
