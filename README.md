@@ -2,7 +2,7 @@
 
 迷你3D MTR轨交可视化 —— 当前已完成 **香港港铁 (MTR) 全网络 3D 实时可视化**，参考 [Mini Tokyo 3D](https://minitokyo3d.com/) 的交互理念。
 
-![tech](https://img.shields.io/badge/Three.js-0.160-blue) ![tech](https://img.shields.io/badge/AMap-JS%20API%202.0-green) ![tech](https://img.shields.io/badge/TypeScript-5.7-blue)
+![tech](https://img.shields.io/badge/Three.js-0.160-blue) ![tech](https://img.shields.io/badge/AMap-JS%20API%202.0-green) ![tech](https://img.shields.io/badge/TypeScript-5.7-blue) [![Build & Deploy to GitHub Pages](https://github.com/7gugu/mini-mtr-3d/actions/workflows/webpack.yml/badge.svg)](https://github.com/7gugu/mini-mtr-3d/actions/workflows/webpack.yml)
 
 ## 功能
 
