@@ -6,6 +6,7 @@
   "scripts": {
     "test": "jest --no-cache",
     "build": "webpack --config webpack.config.js",
+    "build:prod": "webpack --config webpack.config.js --mode production",
     "start": "webpack serve --open"
   },
   "keywords": [],

@@ -37,3 +37,7 @@ npm run build    # 生产构建
 - 高德 Key / 安全密钥：通过环境变量提供（`AMAP_KEY` / `AMAP_SECURITY_CODE`；默认兜底为空字符串）
 - 线路/站点数据：`src/hk_mtr_data.ts`（站码与 data.gov.hk 一致）；**站点真实坐标与繁中/英文名**由 `scripts/fetch-mtr-stations.mjs` 从 OpenStreetMap 生成到 `src/mtr/stations.generated.ts`（勿手改，重跑脚本即可更新）
 - 实时 API 客户端：`src/mtr/api.ts`；轮询与偏移修正：`src/mtr/RealtimeManager.ts`
+
+## 在线演示
+
+https://7gugu.github.io/mini-mtr-3d/

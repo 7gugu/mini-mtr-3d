@@ -4,10 +4,12 @@ const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const webpack = require('webpack');
 require('dotenv').config();
 
+const isProd = process.argv.includes('--mode') && process.argv[process.argv.indexOf('--mode') + 1] === 'production';
+
 module.exports = {
   mode: 'development',
   entry: './src/main.ts',
-  devtool: 'inline-source-map',
+  devtool: isProd ? false : 'inline-source-map',
   module: {
     rules: [
       {
@@ -27,6 +29,7 @@ module.exports = {
   output: {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'dist'),
+    publicPath: isProd ? '/mini-mtr-3d/' : '/',
   },
   plugins: [
     new CleanWebpackPlugin(),
