@@ -83,3 +83,18 @@ export function getServiceDayStart(now: number = Date.now()): number {
 
 /** 服务日时长：05:30 -> 次日 01:30 (20 小时) */
 export const SERVICE_DAY_SPAN_MS = 20 * 3600 * 1000;
+
+/** 地图深夜配色: 18:00 (含) 至次日 06:00 (不含) */
+export const MAP_NIGHT_START_MIN = 18 * 60;
+export const MAP_NIGHT_END_MIN = 6 * 60;
+
+export type MapTheme = 'day' | 'night';
+
+export function mapThemeAt(epochMs: number): MapTheme {
+    const p = getHkParts(epochMs);
+    const minutes = p.hour * 60 + p.minute;
+    if (minutes >= MAP_NIGHT_START_MIN || minutes < MAP_NIGHT_END_MIN) {
+        return 'night';
+    }
+    return 'day';
+}

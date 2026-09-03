@@ -1,4 +1,4 @@
-import { hkToEpoch, parseHkDateTime, getServiceDayStart, getHkParts } from '../src/hktime';
+import { hkToEpoch, parseHkDateTime, getServiceDayStart, getHkParts, mapThemeAt } from '../src/hktime';
 
 describe('hktime', () => {
     describe('hkToEpoch', () => {
@@ -55,6 +55,21 @@ describe('hktime', () => {
             const p = getHkParts(hkToEpoch(2026, 9, 2, 0, 0));
             expect(p.hour).toBe(0);
             expect(p.day).toBe(2);
+        });
+    });
+
+    describe('mapThemeAt', () => {
+        it('uses light map during daytime', () => {
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 6, 0))).toBe('day');
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 12, 0))).toBe('day');
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 17, 59))).toBe('day');
+        });
+
+        it('uses dark map from 18:00 to 06:00', () => {
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 18, 0))).toBe('night');
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 22, 0))).toBe('night');
+            expect(mapThemeAt(hkToEpoch(2026, 9, 3, 1, 0))).toBe('night');
+            expect(mapThemeAt(hkToEpoch(2026, 9, 2, 5, 59))).toBe('night');
         });
     });
 });

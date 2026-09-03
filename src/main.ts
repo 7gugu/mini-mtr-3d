@@ -8,8 +8,16 @@ import { ClockPanel } from './ui/ClockPanel';
 import { Timeline } from './ui/Timeline';
 import { AlertBubbles } from './ui/AlertBubbles';
 import { TrainPopup } from './ui/TrainPopup';
-import { getServiceDayStart, SERVICE_DAY_SPAN_MS } from './hktime';
+import { StationPopup } from './ui/StationPopup';
+import { getServiceDayStart, SERVICE_DAY_SPAN_MS, mapThemeAt, MapTheme } from './hktime';
 import { lineInfoMap, lineMetas, stationDisplayName } from './hk_mtr_data';
+import {
+    clusterStations,
+    interchangeCapsuleSize,
+    offsetOverlappingPolylines,
+    StationCluster,
+    STATION_BORDER_WIDTH,
+} from './trackLayout';
 import '../assets/style.css';
 import * as THREE from 'three';
 import { MeshLine, MeshLineMaterial } from 'three.meshline';
@@ -19,7 +27,81 @@ import { MeshLine, MeshLineMaterial } from 'three.meshline';
 
 import AMapLoader from '@amap/amap-jsapi-loader';
 
+function stadiumShape(length: number, width: number): THREE.Shape {
+    const r = width / 2;
+    const ext = Math.max(0.01, (length - width) / 2);
+    const shape = new THREE.Shape();
+    shape.moveTo(-ext, r);
+    shape.lineTo(ext, r);
+    shape.absarc(ext, 0, r, Math.PI / 2, -Math.PI / 2, true);
+    shape.lineTo(-ext, -r);
+    shape.absarc(-ext, 0, r, -Math.PI / 2, Math.PI / 2, true);
+    return shape;
+}
+
+function addStadiumStation(scene: THREE.Scene, cluster: StationCluster, meshes: THREE.Mesh[]) {
+    const { length, width } = interchangeCapsuleSize(cluster);
+    // 黑边粗度与普通站 RingGeometry(38, 56) 的径向宽度一致
+    const border = new THREE.Mesh(
+        new THREE.ShapeGeometry(stadiumShape(length + STATION_BORDER_WIDTH, width + STATION_BORDER_WIDTH)),
+        new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false, transparent: true, opacity: 1 })
+    );
+    const fill = new THREE.Mesh(
+        new THREE.ShapeGeometry(stadiumShape(length, width)),
+        new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            depthTest: false,
+            transparent: true,
+            opacity: 1,
+        })
+    );
+    border.renderOrder = 10;
+    fill.renderOrder = 11;
+    border.position.set(cluster.cx, cluster.cy, 4);
+    fill.position.set(cluster.cx, cluster.cy, 4.2);
+    border.rotation.z = cluster.angle;
+    fill.rotation.z = cluster.angle;
+    border.userData.stationCode = cluster.code;
+    fill.userData.stationCode = cluster.code;
+    scene.add(border);
+    scene.add(fill);
+    meshes.push(border, fill);
+}
+
+function addCircleStation(scene: THREE.Scene, x: number, y: number, cluster: StationCluster, meshes: THREE.Mesh[]) {
+    const stationGeo = new THREE.CylinderGeometry(48, 48, 8, 32);
+    stationGeo.rotateX(Math.PI / 2);
+    const stationMesh = new THREE.Mesh(
+        stationGeo,
+        new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 1 })
+    );
+    stationMesh.renderOrder = 10;
+    stationMesh.position.set(x, y, 4);
+    stationMesh.userData.stationCode = cluster.code;
+    scene.add(stationMesh);
+    meshes.push(stationMesh);
+
+    const borderMesh = new THREE.Mesh(
+        new THREE.RingGeometry(38, 56, 32),
+        new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 1 })
+    );
+    borderMesh.renderOrder = 11;
+    borderMesh.position.set(x, y, 4.4);
+    borderMesh.userData.stationCode = cluster.code;
+    scene.add(borderMesh);
+    meshes.push(borderMesh);
+}
+
 const AMAP_KEY = config.AMAP_KEY;
+
+const MAP_STYLES: Record<MapTheme, string> = {
+    day: 'amap://styles/whitesmoke',
+    night: 'amap://styles/dark',
+};
+const MAP_SKY: Record<MapTheme, string> = {
+    day: '#9ec9ea',
+    night: '#1f263a',
+};
 
 // FleetManager 在 GLCustomLayer.init 中创建, 偏移提供器在 realtime 实例化后接上
 let fleetOffsetProvider: (trainId: string) => number = () => 0;
@@ -50,10 +132,27 @@ AMapLoader.load({
     // 2. Load Rail Data (Populates railData)
     await loadRailData(AMap, dayStart);
 
+    const initialTheme = mapThemeAt(playback.currentTime);
     const map = new AMap.Map('container', {
         viewMode: '3D', pitch: 55, zoom: 12.5, center: initialCenter,
-        mapStyle: 'amap://styles/dark', skyColor: '#1f263a'
+        mapStyle: MAP_STYLES[initialTheme], skyColor: MAP_SKY[initialTheme]
     });
+
+    let appliedTheme: MapTheme | null = null;
+    const applyMapTheme = (epochMs: number) => {
+        const theme = mapThemeAt(epochMs);
+        if (theme === appliedTheme) {
+            return;
+        }
+        const prev = appliedTheme;
+        appliedTheme = theme;
+        document.body.classList.toggle('theme-day', theme === 'day');
+        document.body.classList.toggle('theme-night', theme === 'night');
+        if (prev !== null) {
+            map.setMapStyle(MAP_STYLES[theme]);
+        }
+    };
+    applyMapTheme(playback.currentTime);
 
     const customCoords = map.customCoords;
     customCoords.setCenter(initialCenter);
@@ -64,7 +163,7 @@ AMapLoader.load({
 
     const trackMeshes: THREE.Mesh[] = [];
     const stationMeshes: THREE.Mesh[] = [];
-    const stationMarkers: { marker: any; major: boolean }[] = []; // AMap.Text markers
+    const stationMarkers: { marker: any; major: boolean; code: string }[] = []; // AMap.Text markers
 
     // 重要的站 (换乘锚点 + 线路端点): 低缩放级别下只显示这些站名
     const majorStations = new Set<string>();
@@ -75,13 +174,20 @@ AMapLoader.load({
     }
 
     let stationLabelsDetailed = false;
+    const setMarkerVisible = (marker: any, visible: boolean) => {
+        if (visible) {
+            marker.show();
+        } else {
+            marker.hide();
+        }
+    };
     const updateStationLabelVisibility = () => {
         const zoom = map.getZoom();
         const detailed = zoom >= 14.2;
         if (detailed === stationLabelsDetailed) return;
         stationLabelsDetailed = detailed;
-        for (const { marker, major } of stationMarkers) {
-            marker.show(major || detailed);
+        for (const { marker, major, code } of stationMarkers) {
+            setMarkerVisible(marker, (major || detailed) && code !== hoveredStationCode);
         }
     };
     map.on('zoomend', updateStationLabelVisibility);
@@ -95,9 +201,13 @@ AMapLoader.load({
     const timeline = new Timeline(playback);
     const alertBubbles = new AlertBubbles(map, lineInfoMap);
     const trainPopup = new TrainPopup();
-    let selectedTrainId: string | null = null;
+    const stationPopup = new StationPopup();
+    let hoveredTrainId: string | null = null;
+    let hoveredStationCode: string | null = null;
+    let stationByCode = new Map<string, StationCluster>();
     const raycaster = new THREE.Raycaster();
     const pointerNdc = new THREE.Vector2();
+    let pointerInside = false;
 
     // 实时模式切换: 只有实时状态才轮询政府 API
     playback.onModeChange = (mode) => {
@@ -127,8 +237,11 @@ AMapLoader.load({
 
         // 1. Cleanup Trains
         if (fleet) { fleet.disposeAll(); fleet = null; }
-        selectedTrainId = null;
+        hoveredTrainId = null;
+        hoveredStationCode = null;
         trainPopup.hide();
+        stationPopup.hide();
+        stationByCode = new Map();
 
         // 2. Cleanup Tracks & Stations
         scene.remove(...trackMeshes);
@@ -149,24 +262,25 @@ AMapLoader.load({
         stationMarkers.length = 0;
         labeledLocations = new Set();
 
-        // 3. 走线缓存: 直接使用高德原始折线 (GCJ02), 不做平滑插值 ——
-        //    CatmullRom 会在弯道/长直道交界处外凸, 导致与高德底图走线偏离
+        // 3. 走线缓存: 高德原始折线转 customCoords, 再对平行重合段做法向并排
         smoothedTracksCache = {};
+        const rawCoords: Record<string, number[][]> = {};
         Object.values(railData.tracks).forEach(track => {
             const pathLngLats = track.path.map(p => p.location);
             const coords = customCoords.lngLatsToCoords(pathLngLats);
-            smoothedTracksCache[track.id] = coords.map((c: number[]) => [c[0], c[1]]);
+            rawCoords[track.id] = coords.map((c: number[]) => [c[0], c[1]]);
         });
+        smoothedTracksCache = offsetOverlappingPolylines(rawCoords);
 
-        // 4. Rebuild Tracks (MeshLine) + Stations
+        // 4. Rebuild Tracks (MeshLine)
         Object.values(railData.tracks).forEach(track => {
-            const pathLngLats = track.path.map(p => p.location);
-            const coords = customCoords.lngLatsToCoords(pathLngLats);
             const smoothedCoords = smoothedTracksCache[track.id];
+            if (!smoothedCoords) {
+                return;
+            }
 
-            // 4.1 Track Lines (贴近地面, 消除俯仰视差, 保证与高德底图走线重合)
             const points: number[] = [];
-            for(let i = 0; i < smoothedCoords.length; i++) {
+            for (let i = 0; i < smoothedCoords.length; i++) {
                 points.push(smoothedCoords[i][0], smoothedCoords[i][1], 1);
             }
 
@@ -185,67 +299,56 @@ AMapLoader.load({
                 near: camera.near,
                 far: camera.far
             });
-            // 走线贴近地面 (z≈1) 避免俯仰视差; 关闭深度测试避免被 3D 楼块遮挡
             material.depthTest = false;
 
             const mesh = new THREE.Mesh(line, material);
             mesh.renderOrder = 1;
             scene.add(mesh);
             trackMeshes.push(mesh);
-
-            // 4.2 Stations (Circles) + 名称标注
-            track.path.forEach((p, idx) => {
-                if (p.name) {
-                    const pos = coords[idx];
-                    const stationGeo = new THREE.CylinderGeometry(48, 48, 8, 32);
-                    stationGeo.rotateX(Math.PI / 2);
-
-                    const fillMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
-                    const stationMesh = new THREE.Mesh(stationGeo, fillMat);
-                    stationMesh.renderOrder = 2;
-                    stationMesh.position.set(pos[0], pos[1], 2);
-                    scene.add(stationMesh);
-                    stationMeshes.push(stationMesh);
-
-                    const borderGeo = new THREE.RingGeometry(38, 56, 32);
-                    const borderMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide, depthTest: false });
-                    const borderMesh = new THREE.Mesh(borderGeo, borderMat);
-                    borderMesh.renderOrder = 2;
-                    borderMesh.position.set(pos[0], pos[1], 2.4);
-                    scene.add(borderMesh);
-                    stationMeshes.push(borderMesh);
-
-                    // 站名标签 (繁体中文): 同一车站 (同站码) 只标一次 (换乘站多线共用)
-                    const code = p.name.split('_')[1];
-                    const isMajor = majorStations.has(p.name);
-                    if (!labeledLocations.has(code)) {
-                        labeledLocations.add(code);
-                        const textMarker = new AMap.Text({
-                            text: stationDisplayName(p.name),
-                            anchor: 'bottom-center',
-                            position: p.location,
-                            offset: new AMap.Pixel(0, -15),
-                            style: {
-                                'background-color': 'rgba(6,10,22,0.72)',
-                                'border-radius': '3px',
-                                'border': '1px solid rgba(148, 197, 255, 0.28)',
-                                'color': '#fff',
-                                'font-size': '12px',
-                                'font-family': 'var(--font-serif-mtr)',
-                                'letter-spacing': '1px',
-                                'padding': '2px 7px',
-                                'box-shadow': '0 0 8px rgba(56, 189, 248, 0.22), 0 2px 6px rgba(0,0,0,0.45)',
-                                'text-shadow': '0 0 6px rgba(148, 197, 255, 0.55)'
-                            },
-                            zIndex: 120
-                        });
-                        textMarker.show(isMajor || stationLabelsDetailed);
-                        map.add(textMarker);
-                        stationMarkers.push({ marker: textMarker, major: isMajor });
-                    }
-                }
-            });
         });
+
+        // 4.2 站点: 换乘站椭圆包住并排线路, 普通站仍用圆点
+        const stationClusters = clusterStations(railData.tracks, smoothedTracksCache);
+        stationByCode = new Map(stationClusters.map(c => [c.code, c]));
+        for (const cluster of stationClusters) {
+            if (cluster.isInterchange) {
+                addStadiumStation(scene, cluster, stationMeshes);
+            } else {
+                addCircleStation(scene, cluster.cx, cluster.cy, cluster, stationMeshes);
+            }
+
+            const sample = cluster.points[0];
+            const isMajor = cluster.points.some(p => majorStations.has(p.name));
+            if (labeledLocations.has(cluster.code)) {
+                continue;
+            }
+            labeledLocations.add(cluster.code);
+
+            const lng = cluster.points.reduce((s, p) => s + p.location[0], 0) / cluster.points.length;
+            const lat = cluster.points.reduce((s, p) => s + p.location[1], 0) / cluster.points.length;
+            const textMarker = new AMap.Text({
+                text: stationDisplayName(sample.name),
+                anchor: 'bottom-center',
+                position: [lng, lat],
+                offset: new AMap.Pixel(0, -15),
+                style: {
+                    'background-color': 'rgba(6,10,22,0.72)',
+                    'border-radius': '3px',
+                    'border': '1px solid rgba(148, 197, 255, 0.28)',
+                    'color': '#fff',
+                    'font-size': '12px',
+                    'font-family': 'var(--font-serif-mtr)',
+                    'letter-spacing': '1px',
+                    'padding': '2px 7px',
+                    'box-shadow': '0 0 8px rgba(56, 189, 248, 0.22), 0 2px 6px rgba(0,0,0,0.45)',
+                    'text-shadow': '0 0 6px rgba(0,0,0,0.85), 0 0 6px rgba(148, 197, 255, 0.55)'
+                },
+                zIndex: 120
+            });
+            setMarkerVisible(textMarker, isMajor || stationLabelsDetailed);
+            map.add(textMarker);
+            stationMarkers.push({ marker: textMarker, major: isMajor, code: cluster.code });
+        }
 
         // 5. 列车车队 (对象池, 每帧只渲染在场列车)
         fleet = new FleetManager(scene, map, customCoords, railData, smoothedTracksCache);
@@ -326,30 +429,80 @@ AMapLoader.load({
 
     map.add(glLayer);
 
-    map.on('click', (e: any) => {
+    const syncStationLabelHover = (hiddenCode: string | null) => {
+        for (const { marker, major, code } of stationMarkers) {
+            setMarkerVisible(marker, (major || stationLabelsDetailed) && code !== hiddenCode);
+        }
+    };
+
+    const clearHover = () => {
+        hoveredTrainId = null;
+        hoveredStationCode = null;
+        if (fleet) {
+            fleet.syncSelection(null);
+        }
+        trainPopup.hide();
+        stationPopup.hide();
+        syncStationLabelHover(null);
+    };
+
+    const pickFromPointer = (clientX: number, clientY: number) => {
         if (!camera || !fleet) {
             return;
         }
+        const rect = document.getElementById('container')!.getBoundingClientRect();
+        pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointerNdc, camera);
+
+        const trainHit = fleet.pick(raycaster);
+        if (trainHit) {
+            hoveredTrainId = trainHit.trip.trainId;
+            hoveredStationCode = null;
+            fleet.syncSelection(hoveredTrainId);
+            stationPopup.hide();
+            syncStationLabelHover(null);
+            return;
+        }
+
+        const stationHits = raycaster.intersectObjects(stationMeshes, false);
+        let stationCode: string | null = null;
+        for (const hit of stationHits) {
+            const code = hit.object.userData.stationCode as string | undefined;
+            if (code) {
+                stationCode = code;
+                break;
+            }
+        }
+
+        if (stationCode) {
+            hoveredTrainId = null;
+            hoveredStationCode = stationCode;
+            fleet.syncSelection(null);
+            trainPopup.hide();
+            syncStationLabelHover(stationCode);
+            return;
+        }
+
+        clearHover();
+    };
+
+    map.on('mousemove', (e: any) => {
         const origin = e.originEvent as MouseEvent | undefined;
         if (!origin) {
             return;
         }
         const target = origin.target as HTMLElement | null;
-        if (target?.closest('.ui-panel, .editor-toggle, .alert-bubble, .train-popup')) {
+        if (target?.closest('.ui-panel, .editor-toggle, .alert-bubble, .train-popup, .station-popup')) {
             return;
         }
+        pointerInside = true;
+        pickFromPointer(origin.clientX, origin.clientY);
+    });
 
-        const rect = document.getElementById('container')!.getBoundingClientRect();
-        pointerNdc.x = ((origin.clientX - rect.left) / rect.width) * 2 - 1;
-        pointerNdc.y = -((origin.clientY - rect.top) / rect.height) * 2 + 1;
-        raycaster.setFromCamera(pointerNdc, camera);
-
-        const hit = fleet.pick(raycaster);
-        selectedTrainId = hit ? hit.trip.trainId : null;
-        fleet.syncSelection(selectedTrainId);
-        if (!selectedTrainId) {
-            trainPopup.hide();
-        }
+    map.on('mouseout', () => {
+        pointerInside = false;
+        clearHover();
     });
 
     // 初始 UI 状态
@@ -362,6 +515,7 @@ AMapLoader.load({
     (window as any).__mtrDebug = { playback, realtime, fleetRef: () => fleet, railData, alertBubbles, map, AMap, getScene: () => scene, getTrackMeshes: () => trackMeshes };
 
     let lastTime = Date.now();
+    let lastFleetUpdateMs = 0;
 
     function animate() {
         const now = Date.now();
@@ -374,19 +528,39 @@ AMapLoader.load({
         const simTime = playback.currentTime;
 
         if (fleet && camera) {
-            fleet.update(simTime);
-            const selected = selectedTrainId ? fleet.getActive(selectedTrainId) : undefined;
-            if (!selected || !selected.active) {
-                selectedTrainId = null;
+            const updateFleet = !timeline.powerSave || (now - lastFleetUpdateMs >= 1000);
+            if (updateFleet) {
+                lastFleetUpdateMs = now;
+                fleet.update(simTime);
+            }
+
+            const box = document.getElementById('container')!;
+            if (pointerInside && hoveredTrainId) {
+                const hovered = fleet.getActive(hoveredTrainId);
+                if (!hovered || !hovered.active) {
+                    clearHover();
+                } else {
+                    fleet.syncSelection(hoveredTrainId);
+                    trainPopup.follow(hovered, camera, box.clientWidth, box.clientHeight);
+                    stationPopup.hide();
+                }
+            } else if (pointerInside && hoveredStationCode) {
+                const cluster = stationByCode.get(hoveredStationCode);
+                if (!cluster) {
+                    clearHover();
+                } else {
+                    fleet.syncSelection(null);
+                    trainPopup.hide();
+                    stationPopup.follow(cluster, camera, box.clientWidth, box.clientHeight);
+                }
+            } else {
                 fleet.syncSelection(null);
                 trainPopup.hide();
-            } else {
-                fleet.syncSelection(selectedTrainId);
-                const box = document.getElementById('container')!;
-                trainPopup.follow(selected, camera, box.clientWidth, box.clientHeight);
+                stationPopup.hide();
             }
         }
         clockPanel.setTime(simTime);
+        applyMapTheme(simTime);
         timeline.render();
         if (playback.isLive) alertBubbles.updatePositions();
 

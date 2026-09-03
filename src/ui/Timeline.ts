@@ -4,6 +4,24 @@
 
 import { PlaybackController, SPEEDS } from '../PlaybackController';
 
+const POWER_SAVE_KEY = 'mini-mtr-power-save';
+
+function readPowerSave(): boolean {
+    try {
+        return localStorage.getItem(POWER_SAVE_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function writePowerSave(on: boolean) {
+    try {
+        localStorage.setItem(POWER_SAVE_KEY, on ? '1' : '0');
+    } catch {
+        // 隐私模式等无法写入时忽略
+    }
+}
+
 function fmtHkClock(ms: number): string {
     return new Intl.DateTimeFormat('zh-HK', {
         timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false
@@ -17,6 +35,7 @@ export class Timeline {
     private playBtn: HTMLButtonElement;
     private speedBtn: HTMLButtonElement;
     private liveBtn: HTMLButtonElement;
+    private powerBtn: HTMLButtonElement;
     private trackEl: HTMLElement;
     private fillEl: HTMLElement;
     private handleEl: HTMLElement;
@@ -24,9 +43,11 @@ export class Timeline {
     private labelsEl: HTMLElement;
 
     private dragging = false;
+    public powerSave = false;
 
     constructor(playback: PlaybackController) {
         this.playback = playback;
+        this.powerSave = readPowerSave();
 
         this.container = document.createElement('div');
         this.container.className = 'ui-panel timeline-panel';
@@ -60,6 +81,19 @@ export class Timeline {
         this.speedBtn.title = '回放倍速';
         this.speedBtn.onclick = () => this.playback.cycleSpeed();
         controls.appendChild(this.speedBtn);
+
+        this.powerBtn = document.createElement('button');
+        this.powerBtn.className = 'ui-button tl-btn power-btn';
+        this.powerBtn.textContent = '省電';
+        this.powerBtn.title = '省電模式：全圖列車位置每秒更新一次';
+        this.powerBtn.setAttribute('aria-pressed', 'false');
+        this.powerBtn.onclick = () => {
+            this.powerSave = !this.powerSave;
+            writePowerSave(this.powerSave);
+            this.syncPowerButton();
+        };
+        this.syncPowerButton();
+        controls.appendChild(this.powerBtn);
 
         this.container.appendChild(controls);
 
@@ -149,6 +183,12 @@ export class Timeline {
         };
         el.addEventListener('pointerup', end);
         el.addEventListener('pointercancel', end);
+    }
+
+    private syncPowerButton() {
+        this.powerBtn.classList.toggle('active', this.powerSave);
+        this.powerBtn.setAttribute('aria-pressed', String(this.powerSave));
+        this.powerBtn.textContent = this.powerSave ? '省電 · 開' : '省電';
     }
 
     private refreshButtons() {

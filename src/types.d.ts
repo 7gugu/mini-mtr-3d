@@ -8,8 +8,11 @@ declare namespace AMap {
         lngLatToGeodeticCoord(lnglat: any): { x: number, y: number };
         geodeticCoordToLngLat(pixel: Pixel): any;
         plugin(name: string | string[], callback: () => void): void; // string[] support
-        customCoords: any; 
+        customCoords: any;
         render(): void;
+        setMapStyle(style: string): void;
+        getZoom(): number;
+        on(event: string, handler: (e: any) => void): void;
     }
     class Pixel {
         constructor(x: number, y: number);

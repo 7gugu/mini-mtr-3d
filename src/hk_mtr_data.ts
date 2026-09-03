@@ -396,9 +396,29 @@ export async function getHkRailData(AMap: any, dayStart: number = getServiceDayS
 
 /** 站点显示名: 繁体中文优先，缺省退回英文/站码 */
 export function stationDisplayName(stationKey: string): string {
-    const code = stationKey.split('_')[1];
+    const code = stationKey.includes('_') ? stationKey.split('_')[1] : stationKey;
     const n = stationNames[code];
     return n?.zh || n?.en || code;
+}
+
+/** 途经某站码的运营线路 (支线归并到主线 apiCode) */
+export function linesServingStationCode(code: string): LineInfo[] {
+    const seen = new Set<string>();
+    const out: LineInfo[] = [];
+    for (const meta of lineMetas) {
+        const hit = meta.stations.some(s => s.split('_')[1] === code);
+        if (!hit) {
+            continue;
+        }
+        const info = lineInfoMap[meta.id]
+            || Object.values(lineInfoMap).find(l => l.apiCode === meta.apiCode);
+        if (!info || seen.has(info.id)) {
+            continue;
+        }
+        seen.add(info.id);
+        out.push(info);
+    }
+    return out;
 }
 
 // Export initial center (WGS84)
