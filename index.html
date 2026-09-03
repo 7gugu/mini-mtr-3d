@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GBA 3D Rail</title>
+</head>
+<body>
+<div id="container"></div>
+<script>
+    // 早期错误捕获 (诊断用): 记录加载期的 console.error 与未捕获异常
+    window.__consoleErrors = [];
+    window.addEventListener('error', function (e) { window.__consoleErrors.push('error: ' + e.message); });
+    (function () {
+        var orig = console.error;
+        console.error = function () {
+            try {
+                window.__consoleErrors.push(Array.prototype.map.call(arguments, function (x) {
+                    return String((x && x.stack) || x);
+                }).join(' ').slice(0, 600));
+            } catch (_) { /* noop */ }
+            orig.apply(console, arguments);
+        };
+    })();
+</script>
+<!-- Webpack will inject scripts here -->
+</body>
+</html>

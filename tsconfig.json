@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist/",
+    "sourceMap": true,
+    "noImplicitAny": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "es6",
+    "target": "es2017",
+    "jsx": "react",
+    "allowJs": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "typeRoots": ["./node_modules/@types", "./src/@types"]
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts"
+  ]
+}

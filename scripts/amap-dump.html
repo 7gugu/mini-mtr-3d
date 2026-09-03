@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AMAP_DUMP</title>
+<style>body{font-family:monospace;padding:12px;background:#111;color:#9f9}</style>
+</head>
+<body>
+<div id="status">loading AMap...</div>
+<pre id="out"></pre>
+<script>
+// 抓取高德自家的港铁线路数据 (走线 path + 途经站点 via_stops, 均为 GCJ02)
+// 结果写入 window.__AMAP_DUMP__, 供 node 侧 evaluate 读取落盘。
+window._AMapSecurityConfig = { securityJsCode: '3d6b6a81601f345c85a8cb0074ae2288' };
+
+const KEY = '85f3f1a9f3a3aabc8ac314c122c35de0';
+const s = document.createElement('script');
+s.src = `https://webapi.amap.com/maps?v=2.0&key=${KEY}&plugin=AMap.LineSearch`;
+s.onload = run;
+s.onerror = () => setStatus('AMap script load FAILED');
+document.head.appendChild(s);
+
+function setStatus(t) { document.getElementById('status').textContent = t; }
+
+// 各线路关键词 (繁体优先, 简体兜底; AMap 返回的全部变体都会保存)
+const FAMILIES = [
+    '港島綫', '荃灣綫', '觀塘綫', '將軍澳綫', '東鐵綫', '屯馬綫',
+    '東涌綫', '機場快綫', '迪士尼綫', '南港島綫',
+    '港岛线', '荃湾线', '观塘线', '将军澳线', '东铁线', '屯马线',
+    '东涌线', '机场快线', '迪士尼线', '南港岛线',
+];
+
+function toLL(p) {
+    if (!p) return null;
+    if (p.getLng) return [p.getLng(), p.getLat()];
+    if (Array.isArray(p)) return [p[0], p[1]];
+    return [p.lng, p.lat];
+}
+function serializeLine(l) {
+    return {
+        name: l.name,
+        type: l.type,
+        path: (l.path || []).map(toLL).filter(Boolean),
+        via_stops: (l.via_stops || []).map(st => ({ name: st.name, location: toLL(st.location) })),
+    };
+}
+
+async function run() {
+    try {
+        await new Promise((res, rej) => { AMap.plugin('AMap.LineSearch', () => res()); setTimeout(() => rej(new Error('plugin timeout')), 15000); });
+        const searcher = new AMap.LineSearch({ city: '香港', extensions: 'all', pageIndex: 1, pageSize: 30 });
+        const dump = {};
+        for (const kw of FAMILIES) {
+            try {
+                const result = await new Promise((res) => searcher.search(kw, (status, r) => res({ status, r })));
+                let lines = [];
+                if (result.status === 'complete' && result.r) {
+                    const li = result.r.lineInfo;
+                    const arr = Array.isArray(li) ? li : (li && li.lines) || result.r.lines || [];
+                    lines = arr.map(serializeLine);
+                }
+                dump[kw] = { status: result.status, lines };
+                setStatus(`${kw}: ${result.status}, ${lines.length} lines`);
+            } catch (e) {
+                dump[kw] = { status: 'error', error: String(e), lines: [] };
+                setStatus(`${kw}: ERROR ${e}`);
+            }
+            await new Promise(r => setTimeout(r, 250));
+        }
+        window.__AMAP_DUMP__ = dump;
+        window.__DUMP_DONE__ = true;
+        const total = Object.values(dump).reduce((n, v) => n + (v.lines ? v.lines.length : 0), 0);
+        setStatus(`DONE, total lines: ${total}`);
+        document.getElementById('out').textContent = JSON.stringify(Object.fromEntries(Object.entries(dump).map(([k, v]) => [k, v.lines.map(l => `${l.name} path=${l.path.length} stops=${l.via_stops.length}`)])), null, 1);
+    } catch (e) {
+        setStatus('FAILED: ' + e);
+    }
+}
+</script>
+</body>
+</html>

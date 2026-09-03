@@ -1,0 +1,43 @@
+# Role
+你是一位精通 WebGL、Three.js 和高德地图 (AMap JS API v2.0) 开发的资深前端工程师。
+
+# Project Context
+我们要实现一个基于 **大湾区 (Greater Bay Area)** 的轨道交通可视化项目，灵感来源于 **Mini Tokyo 3D**。
+**港铁 (MTR) 部分已完成**：全天时刻表模拟 + 港府开放数据实时修正 + 突发事件气泡 + 时间轴回放。
+
+# Current Tech Stack & Decisions
+1.  **Language**: TypeScript (target ES2017)。
+2.  **Build System**: Webpack + Jest。
+3.  **Map Provider**: 高德地图 (AMap) JS API v2.0（WGS84 站点坐标经 `AMap.convertFrom` 转 GCJ02，分块 40 个/次 + 重试 + 失败退回原坐标）。
+4.  **Rendering**: `AMap.GLCustomLayer` + Three.js + three.meshline。
+5.  **Data Structure**: `RailSystemData` (tracks + trips)；`TrainTrip` 扩展了 `lineId` / `direction` ('UP'|'DOWN', 遵循 data.gov.hk 方向定义)。
+6.  **UI Framework**: 原生 DOM + CSS (Glassmorphism)，组件在 `src/ui/`。
+
+# Architecture (MTR 实时可视化)
+- `src/hk_mtr_data.ts`: 线路元数据 (运营参数: 首末班车/班距/速度/支线 branch 配置) + `generateLineTrips` 全天确定性时刻表生成。**全网 0 点收车** (`SERVICE_END_OFFSET_MIN`): 午夜前无法抵达终点的班次不生成，末班车按全程运行时间反推 (最后一班约 23:56 发车)。注意美孚站码是 **MEF** 不是 MEI；DRL 的 API UP 方向与站点正序相反 (`upIsForward: false`)。
+- `src/mtr/stations.generated.ts`: **站点真实坐标 (WGS84) + 繁中/英文名**，由 `scripts/fetch-mtr-stations.mjs` 从 OpenStreetMap (Overpass) 生成，勿手改。注意: Overpass 对 Node fetch 默认 UA 返回 406，需自定义 User-Agent；站体可能是 node/way/relation，查询需全覆盖；HK 查询用 bbox 而非 area。列车尺寸约 240×55m (真实比例)，站盘半径 48，轨道宽 24。
+- `src/hktime.ts`: 香港时间 (UTC+8) 工具；服务日 = 05:30 → 次日 01:30，凌晨 03:00 前属前一天服务日。
+- `src/mtr/api.ts`: Next Train API 客户端 (`getSchedule.php?type=mtr&line=X&sta=Y&lang=TC`，**每次只能一线一站，POST 被网关禁止**)；响应含线路事故 (`status=0 + message + url`, `isdelay`)；HKO 天气 `rhrread`。两端点均支持 CORS (`access-control-allow-origin: *`)。
+- `src/mtr/RealtimeManager.ts`: 每 30s 轮询每线 1 个监测站 (anchorSta)；API 真实到站与计划时刻**贪心配对** (优先按 `dest` == 班次终点站码，防支线错配)，每班车得出 `offset` (clamp ±10min)，6s 平滑收敛；`extractIncident` 过滤"服务已结束"消息。**只在直播模式轮询**。
+- `src/FleetManager.ts`: 列车对象池 (按 lineId 复用 Mesh)，每帧只渲染 [startMs, endMs] 覆盖当前时刻的班次。
+- `src/Train.ts`: `update(currentTime, offsetMs)` 支持实时偏移；行程间隙 (停站) 时停靠站台显示。
+- `src/PlaybackController.ts`: 直播/回放引擎。直播 = currentTime 跟随 Date.now()；回放 = dt × speed (1/2/5/15/60×)；seek 距现在 <2.5s 自动回到直播。
+- `src/ui/ClockPanel.ts`: 左上时钟 + HKO 天气 (10min 刷新) + 数据源状态。
+- `src/ui/Timeline.ts`: 底部全天进度条 (pointer 拖拽) + 播放/倍速/回到現在。
+- `src/ui/AlertBubbles.ts`: 突发气泡，锚定 `lineInfoMap[lineId].anchor` (GCJ02)，`map.lngLatToContainer` 逐帧跟随；仅直播模式显示。
+- `src/main.ts`: 接线。`window.__mtrDebug` 暴露 {playback, realtime, fleetRef, map, AMap} 便于调试/测试。
+- 站名标签按缩放分级: zoom ≥ 14.2 显示全部，否则仅换乘/端点大站 (majorStations)。
+
+# Completed Features
+1.  港铁 10 线 3D 列车 + 轨道 (含 TKL 康城支线、EAL 落馬洲支线经 branch 配置生成)。
+2.  实时修正: 偏移匹配 + 突发事件气泡 + 连接状态提示 (断线显示"顯示計劃時刻")。
+3.  时间轴回放 (05:30→01:30) + 倍速；回放时脱离政府 API。
+4.  左上时钟/天气/警告；右下角可展开编辑器 (localStorage key: `railData_mtr_v2`)。
+5.  Jest: hktime / schedule / mtrApi / realtime (偏移匹配) 单测。
+
+# Next Steps
+1.  **更多城市**: 深圳地铁 (也有类似开放数据)、广州地铁接入；把 `lineMetas` 抽象成多城市数据源。
+2.  **性能**: 列车迁移 InstancedMesh；视锥剔除。
+3.  **视觉**: Bloom 发光、列车拖尾、进站时刻倒计时标签。
+4.  **交互**: 点击列车显示班次详情 (终点站/下一站/延误分钟)；相机跟随。
+5.  **实时增强**: 多监测站 (每线 2-3 站) 提高修正覆盖率；用 ttnt 做车次级速度曲线。
