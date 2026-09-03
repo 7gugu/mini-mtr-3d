@@ -1,17 +1,25 @@
 // 关于面板: 创作缘由与作者说明
 
+import { onLocaleChange, t } from '../i18n';
+
 const MINI_TOKYO_URL = 'https://minitokyo3d.com/';
 const AUTHOR_URL = 'https://github.com/7gugu';
+const BLOG_URL = 'https://7gugu.com';
+const EMAIL = 'gz7gugu@qq.com';
 
 export class AboutPanel {
     public overlay: HTMLElement;
     private toggleBtn: HTMLButtonElement;
+    private closeBtn: HTMLButtonElement;
+    private titleEl: HTMLElement;
+    private bylineEl: HTMLElement;
+    private contactEl: HTMLElement;
+    private authorLink: HTMLAnchorElement;
+    private bodyEl: HTMLElement;
 
     public constructor() {
         this.toggleBtn = document.createElement('button');
         this.toggleBtn.className = 'ui-button about-toggle';
-        this.toggleBtn.textContent = '關於';
-        this.toggleBtn.title = '關於 mini mtr';
         this.toggleBtn.onclick = () => this.open();
         document.body.appendChild(this.toggleBtn);
 
@@ -26,47 +34,40 @@ export class AboutPanel {
         const card = document.createElement('div');
         card.className = 'ui-panel about-card';
 
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'about-close';
-        closeBtn.type = 'button';
-        closeBtn.setAttribute('aria-label', '關閉');
-        closeBtn.textContent = '×';
-        closeBtn.onclick = () => this.close();
-        card.appendChild(closeBtn);
+        this.closeBtn = document.createElement('button');
+        this.closeBtn.className = 'about-close';
+        this.closeBtn.type = 'button';
+        this.closeBtn.textContent = '×';
+        this.closeBtn.onclick = () => this.close();
+        card.appendChild(this.closeBtn);
 
-        const title = document.createElement('h3');
-        title.className = 'about-title';
-        title.textContent = '關於 mini mtr';
-        card.appendChild(title);
+        this.titleEl = document.createElement('h3');
+        this.titleEl.className = 'about-title';
+        card.appendChild(this.titleEl);
 
-        const byline = document.createElement('p');
-        byline.className = 'about-byline';
-        byline.appendChild(document.createTextNode('作者 '));
-        const authorLink = document.createElement('a');
-        authorLink.href = AUTHOR_URL;
-        authorLink.target = '_blank';
-        authorLink.rel = 'noopener';
-        authorLink.textContent = '7gugu';
-        byline.appendChild(authorLink);
-        card.appendChild(byline);
+        this.bylineEl = document.createElement('p');
+        this.bylineEl.className = 'about-byline';
+        this.authorLink = document.createElement('a');
+        this.authorLink.href = AUTHOR_URL;
+        this.authorLink.target = '_blank';
+        this.authorLink.rel = 'noopener';
+        this.authorLink.textContent = '7gugu';
+        this.bylineEl.appendChild(this.authorLink);
+        card.appendChild(this.bylineEl);
 
-        const body = document.createElement('div');
-        body.className = 'about-body';
-        body.appendChild(this.para(
-            '很早以前我就接觸到 ',
-            this.link(MINI_TOKYO_URL, 'Mini Tokyo 3D'),
-            '。那是第一次看見整座城市的軌道交通在三維地圖上自己跑起來，當時確實被震撼到了。'
-        ));
-        body.appendChild(this.para(
-            '那之後一直想：國內的軌交網絡能不能也做成這樣。技術門檻擺在那裡，構想停了很久。現在有了 AI 的幫助，我終於有能力把香港港鐵做成這套 3D 可視化 —— 這就是 mini mtr。'
-        ));
-        body.appendChild(this.para(
-            '時刻表目前按公開班距與服務時段生成，難免和真實運行有出入。如果你手上有更準確的時間，非常歡迎告訴我，我樂意修正。'
-        ));
-        card.appendChild(body);
+        this.contactEl = document.createElement('p');
+        this.contactEl.className = 'about-contact';
+        card.appendChild(this.contactEl);
+
+        this.bodyEl = document.createElement('div');
+        this.bodyEl.className = 'about-body';
+        card.appendChild(this.bodyEl);
 
         this.overlay.appendChild(card);
         document.body.appendChild(this.overlay);
+
+        this.applyLocale();
+        onLocaleChange(() => this.applyLocale());
 
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !this.overlay.classList.contains('hidden-panel')) {
@@ -85,12 +86,38 @@ export class AboutPanel {
         this.toggleBtn.classList.remove('active');
     }
 
+    private applyLocale() {
+        this.toggleBtn.textContent = t('about');
+        this.toggleBtn.title = t('aboutTitle');
+        this.closeBtn.setAttribute('aria-label', t('aboutClose'));
+        this.titleEl.textContent = t('aboutTitle');
+        this.bylineEl.replaceChildren(document.createTextNode(t('aboutAuthor')), this.authorLink);
+        this.contactEl.replaceChildren(
+            document.createTextNode(`${t('aboutBlog')}: `),
+            this.link(BLOG_URL, '7gugu.com'),
+            document.createTextNode(` · ${t('aboutEmail')}: `),
+            this.mailLink(EMAIL),
+        );
+        this.bodyEl.replaceChildren(
+            this.para(t('aboutP1a'), this.link(MINI_TOKYO_URL, 'Mini Tokyo 3D'), t('aboutP1b')),
+            this.para(t('aboutP2')),
+            this.para(t('aboutP3')),
+        );
+    }
+
     private link(href: string, text: string): HTMLAnchorElement {
         const a = document.createElement('a');
         a.href = href;
         a.target = '_blank';
         a.rel = 'noopener';
         a.textContent = text;
+        return a;
+    }
+
+    private mailLink(email: string): HTMLAnchorElement {
+        const a = document.createElement('a');
+        a.href = `mailto:${email}`;
+        a.textContent = email;
         return a;
     }
 

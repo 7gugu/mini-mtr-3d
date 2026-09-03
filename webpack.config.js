@@ -1,6 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 const webpack = require('webpack');
 require('dotenv').config();
 
@@ -19,7 +20,7 @@ module.exports = {
       },
       {
         test: /\.css$/i,
-        use: ["style-loader", "css-loader"],
+        use: ['style-loader', 'css-loader'],
       },
     ],
   },
@@ -37,14 +38,19 @@ module.exports = {
       template: 'index.html',
       favicon: './assets/icon.png',
     }),
+    new CopyWebpackPlugin({
+      patterns: [
+        { from: 'assets/og.jpg', to: 'og.jpg' },
+        { from: 'assets/icon.png', to: 'icon.png' },
+      ],
+    }),
     new webpack.DefinePlugin({
       'process.env.AMAP_KEY': JSON.stringify(process.env.AMAP_KEY),
-      'process.env.AMAP_SECURITY_CODE': JSON.stringify(process.env.AMAP_SECURITY_CODE)
-    })
+      'process.env.AMAP_SECURITY_CODE': JSON.stringify(process.env.AMAP_SECURITY_CODE),
+    }),
   ],
   devServer: {
     static: './dist',
     hot: true,
-  }
+  },
 };
-

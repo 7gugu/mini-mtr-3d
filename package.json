@@ -1,7 +1,7 @@
 {
   "name": "mini-greater-bay-area-3d",
   "version": "1.0.0",
-  "description": "迷你3D湾区轨交",
+  "description": "Miniature 3D real-time visualization of the Hong Kong MTR",
   "main": "index.js",
   "scripts": {
     "test": "jest --no-cache",

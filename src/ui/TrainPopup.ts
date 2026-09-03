@@ -2,18 +2,17 @@
 
 import * as THREE from 'three';
 import { Train } from '../Train';
-import { lineInfoMap, stationDisplayName } from '../hk_mtr_data';
+import { lineDisplayName, lineInfoMap, stationDisplayName } from '../hk_mtr_data';
 import { HK_TZ } from '../hktime';
-
-const timeFmt = new Intl.DateTimeFormat('zh-HK', {
-    timeZone: HK_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-});
+import { getLocale, intlLocale, onLocaleChange, t } from '../i18n';
 
 function formatHm(epochMs: number): string {
-    return timeFmt.format(new Date(epochMs));
+    return new Intl.DateTimeFormat(intlLocale(), {
+        timeZone: HK_TZ,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(new Date(epochMs));
 }
 
 export class TrainPopup {
@@ -24,6 +23,7 @@ export class TrainPopup {
     private prevEl: HTMLElement;
     private nextEl: HTMLElement;
     private lastKey = '';
+    private lastTrain: Train | null = null;
 
     public constructor() {
         this.root = document.createElement('div');
@@ -54,11 +54,19 @@ export class TrainPopup {
 
         this.root.appendChild(body);
         document.body.appendChild(this.root);
+
+        onLocaleChange(() => {
+            this.lastKey = '';
+            if (this.lastTrain) {
+                this.renderContent(this.lastTrain);
+            }
+        });
     }
 
     public hide() {
         this.root.classList.add('hidden-panel');
         this.lastKey = '';
+        this.lastTrain = null;
     }
 
     public follow(train: Train, camera: THREE.Camera, width: number, height: number) {
@@ -67,6 +75,7 @@ export class TrainPopup {
             return;
         }
 
+        this.lastTrain = train;
         this.renderContent(train);
 
         const v = train.getPopupAnchor();
@@ -89,12 +98,14 @@ export class TrainPopup {
             return;
         }
 
+        const locale = getLocale();
         const key = [
             train.trip.trainId,
             info.prevStationId,
             info.nextStationId,
             info.prevTime,
             info.nextTime,
+            locale,
         ].join('|');
         if (key === this.lastKey) {
             return;
@@ -102,16 +113,18 @@ export class TrainPopup {
         this.lastKey = key;
 
         const line = train.trip.lineId ? lineInfoMap[train.trip.lineId] : undefined;
-        this.lineEl.textContent = line?.nameZh || train.trip.lineId || '列車';
+        this.lineEl.textContent = line
+            ? lineDisplayName(line, locale)
+            : (train.trip.lineId || t('train'));
         this.root.style.setProperty('--line-color', line?.color || train.colorHex);
 
-        this.dirEl.textContent = `往${stationDisplayName(info.destStationId)}`;
+        this.dirEl.textContent = `${t('boundFor')}${stationDisplayName(info.destStationId, locale)}`;
 
-        this.prevEl.textContent = `上一站: ${stationDisplayName(info.prevStationId)} ${formatHm(info.prevTime)}`;
+        this.prevEl.textContent = `${t('prevStop')}: ${stationDisplayName(info.prevStationId, locale)} ${formatHm(info.prevTime)}`;
         if (info.nextStationId) {
-            this.nextEl.textContent = `下一站: ${stationDisplayName(info.nextStationId)} ${formatHm(info.nextTime)}`;
+            this.nextEl.textContent = `${t('nextStop')}: ${stationDisplayName(info.nextStationId, locale)} ${formatHm(info.nextTime)}`;
         } else {
-            this.nextEl.textContent = '下一站: 終點';
+            this.nextEl.textContent = `${t('nextStop')}: ${t('terminus')}`;
         }
     }
 }

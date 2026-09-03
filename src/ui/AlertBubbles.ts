@@ -1,11 +1,9 @@
-// src/ui/AlertBubbles.ts
 // 线路突发事件气泡: 锚定在受影响线路中点站上方, 跟随地图移动。
-// 点击展开详情 (官方文案 + 详情链接)。仅在实时模式下显示。
 
 import { LineIncident } from '../mtr/api';
-import { LineInfo } from '../hk_mtr_data';
+import { LineInfo, lineDisplayName } from '../hk_mtr_data';
+import { getLocale, intlLocale, onLocaleChange, t } from '../i18n';
 
-/** 最小地图接口 (避免与 main 循环导入) */
 interface MapLike {
     lngLatToContainer: (lnglat: unknown) => { getX?: () => number; getY?: () => number; x?: number; y?: number };
 }
@@ -14,8 +12,10 @@ interface BubbleEntry {
     lineId: string;
     info: LineInfo;
     incident: LineIncident;
-    root: HTMLElement;   // 定位容器 (跟随地图)
-    card: HTMLElement;   // 展开的详情卡
+    root: HTMLElement;
+    nameEl: HTMLElement;
+    hintEl: HTMLElement;
+    card: HTMLElement;
     expanded: boolean;
 }
 
@@ -31,18 +31,16 @@ export class AlertBubbles {
         this.layer = document.createElement('div');
         this.layer.className = 'alert-layer';
         document.body.appendChild(this.layer);
+        onLocaleChange(() => this.relocalize());
     }
 
-    /** 实时管理器回调: 全量同步气泡 */
     setIncidents(incidents: Map<string, LineIncident>) {
-        // 移除已解除的
         for (const [lineId, entry] of this.entries) {
             if (!incidents.has(lineId)) {
                 entry.root.remove();
                 this.entries.delete(lineId);
             }
         }
-        // 新增/更新
         incidents.forEach((incident, lineId) => {
             const existing = this.entries.get(lineId);
             if (existing && existing.incident.message === incident.message && existing.incident.updatedAt === incident.updatedAt) {
@@ -52,15 +50,17 @@ export class AlertBubbles {
                 this.createBubble(lineId, incident);
             } else {
                 existing.incident = incident;
+                this.renderBubbleChrome(existing);
                 this.renderCard(existing);
             }
         });
     }
 
     private createBubble(lineId: string, incident: LineIncident) {
-        // 线路锚点可能缺失 (编辑器自定义数据)
         const info = this.lineInfos[lineId];
-        if (!info) return;
+        if (!info) {
+            return;
+        }
 
         const root = document.createElement('div');
         root.className = 'alert-bubble';
@@ -71,20 +71,19 @@ export class AlertBubbles {
         icon.textContent = '⚠';
         root.appendChild(icon);
 
-        const name = document.createElement('div');
-        name.className = 'alert-line-name';
-        name.textContent = info.nameZh;
-        root.appendChild(name);
+        const nameEl = document.createElement('div');
+        nameEl.className = 'alert-line-name';
+        root.appendChild(nameEl);
 
-        const hint = document.createElement('div');
-        hint.className = 'alert-hint';
-        hint.textContent = incident.isdelay ? '服務延誤' : '特別服務安排';
-        root.appendChild(hint);
+        const hintEl = document.createElement('div');
+        hintEl.className = 'alert-hint';
+        root.appendChild(hintEl);
 
         const card = document.createElement('div');
         card.className = 'alert-card';
         root.appendChild(card);
 
+        const entry: BubbleEntry = { lineId, info, incident, root, nameEl, hintEl, card, expanded: false };
         root.addEventListener('click', (e) => {
             e.stopPropagation();
             entry.expanded = !entry.expanded;
@@ -92,10 +91,16 @@ export class AlertBubbles {
         });
 
         this.layer.appendChild(root);
-        const entry: BubbleEntry = { lineId, info, incident, root, card, expanded: false };
         this.entries.set(lineId, entry);
+        this.renderBubbleChrome(entry);
         this.renderCard(entry);
         this.updatePosition(entry);
+    }
+
+    private renderBubbleChrome(entry: BubbleEntry) {
+        const locale = getLocale();
+        entry.nameEl.textContent = lineDisplayName(entry.info, locale);
+        entry.hintEl.textContent = entry.incident.isdelay ? t('delay') : t('specialService');
     }
 
     private renderCard(entry: BubbleEntry) {
@@ -114,8 +119,8 @@ export class AlertBubbles {
 
         const time = document.createElement('div');
         time.className = 'alert-card-time';
-        time.textContent = `更新於 ${new Intl.DateTimeFormat('zh-HK', {
-            timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false
+        time.textContent = `${t('updatedAt')} ${new Intl.DateTimeFormat(intlLocale(), {
+            timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false,
         }).format(new Date(incident.updatedAt))}`;
         card.appendChild(time);
 
@@ -125,9 +130,16 @@ export class AlertBubbles {
             link.href = incident.url;
             link.target = '_blank';
             link.rel = 'noopener';
-            link.textContent = '查看官方特別服務安排 ↗';
+            link.textContent = t('officialLink');
             card.appendChild(link);
         }
+    }
+
+    private relocalize() {
+        this.entries.forEach(entry => {
+            this.renderBubbleChrome(entry);
+            this.renderCard(entry);
+        });
     }
 
     private updatePosition(entry: BubbleEntry) {
@@ -138,13 +150,14 @@ export class AlertBubbles {
             entry.root.style.left = `${x}px`;
             entry.root.style.top = `${y}px`;
         } catch {
-            // 地图未就绪
+            // map not ready
         }
     }
 
-    /** 每帧调用: 气泡跟随地图 */
     updatePositions() {
-        if (this.entries.size === 0) return;
+        if (this.entries.size === 0) {
+            return;
+        }
         this.entries.forEach(entry => this.updatePosition(entry));
     }
 

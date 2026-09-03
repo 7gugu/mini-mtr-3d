@@ -1,23 +1,17 @@
-// src/ui/ClockPanel.ts
 // 左上角: 香港时间 (模拟时间) + 日期 + 天文台现时天气 + 实时数据状态
 
 import { HkWeather, fetchHkWeather, weatherIconEmoji } from '../mtr/api';
 import { HK_TZ } from '../hktime';
+import { getLocale, intlLocale, onLocaleChange, t } from '../i18n';
 
 const WEATHER_INTERVAL_MS = 10 * 60 * 1000;
-
-const timeFmt = new Intl.DateTimeFormat('zh-HK', {
-    timeZone: HK_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-});
-const dateFmt = new Intl.DateTimeFormat('zh-HK', {
-    timeZone: HK_TZ, year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
-});
 
 export class ClockPanel {
     container: HTMLElement;
 
     private badge: HTMLElement;
     private liveLabel: HTMLElement;
+    private tzLabel: HTMLElement;
     private timeEl: HTMLElement;
     private dateEl: HTMLElement;
     private weatherRow: HTMLElement;
@@ -26,76 +20,91 @@ export class ClockPanel {
 
     private weather: HkWeather | null = null;
     private isLive = true;
+    private lastEpochMs = Date.now();
 
     constructor() {
         this.container = document.createElement('div');
         this.container.className = 'ui-panel clock-panel';
 
-        // 顶行: LIVE 徽标 + 香港时间标签
         const topRow = document.createElement('div');
         topRow.className = 'clock-top';
         this.badge = document.createElement('span');
         this.badge.className = 'live-badge';
         this.liveLabel = document.createElement('span');
         this.liveLabel.className = 'live-label';
-        this.liveLabel.textContent = '直播';
         topRow.appendChild(this.badge);
         topRow.appendChild(this.liveLabel);
-        const tz = document.createElement('span');
-        tz.className = 'tz-label';
-        tz.textContent = '香港時間 HKT';
-        topRow.appendChild(tz);
+        this.tzLabel = document.createElement('span');
+        this.tzLabel.className = 'tz-label';
+        topRow.appendChild(this.tzLabel);
         this.container.appendChild(topRow);
 
-        // 大时钟
         this.timeEl = document.createElement('div');
         this.timeEl.className = 'clock-time';
         this.container.appendChild(this.timeEl);
 
-        // 日期
         this.dateEl = document.createElement('div');
         this.dateEl.className = 'clock-date';
         this.container.appendChild(this.dateEl);
 
-        // 天气行
         this.weatherRow = document.createElement('div');
         this.weatherRow.className = 'weather-row';
-        this.weatherRow.textContent = '天氣載入中…';
         this.container.appendChild(this.weatherRow);
 
-        // 警告行
         this.warnRow = document.createElement('div');
         this.warnRow.className = 'weather-warnings';
         this.container.appendChild(this.warnRow);
 
-        // 数据源状态
         this.statusEl = document.createElement('div');
         this.statusEl.className = 'api-status';
         this.container.appendChild(this.statusEl);
 
         document.body.appendChild(this.container);
 
+        this.applyLocale();
+        onLocaleChange(() => {
+            this.applyLocale();
+            void this.refreshWeather();
+        });
+
         void this.refreshWeather();
         setInterval(() => void this.refreshWeather(), WEATHER_INTERVAL_MS);
     }
 
+    private applyLocale() {
+        this.tzLabel.textContent = t('hkTime');
+        this.setLive(this.isLive);
+        this.setTime(this.lastEpochMs);
+        if (!this.weather) {
+            this.weatherRow.textContent = t('weatherLoading');
+        } else {
+            this.renderWeather();
+        }
+    }
+
     private async refreshWeather() {
         try {
-            this.weather = await fetchHkWeather('tc');
+            this.weather = await fetchHkWeather(getLocale() === 'zh' ? 'tc' : 'en');
             this.renderWeather();
         } catch (e) {
             console.warn('[Weather] fetch failed', e);
-            this.weatherRow.textContent = '天氣數據暫不可用';
+            this.weatherRow.textContent = t('weatherUnavailable');
         }
     }
 
     private renderWeather() {
         const w = this.weather;
-        if (!w) return;
+        if (!w) {
+            return;
+        }
         const parts: string[] = [];
         parts.push(`${weatherIconEmoji(w.icon)}`);
-        if (!isNaN(w.tempC)) parts.push(`${w.tempC}°C`);
-        if (!isNaN(w.humidity)) parts.push(`濕度 ${w.humidity}%`);
+        if (!isNaN(w.tempC)) {
+            parts.push(`${w.tempC}°C`);
+        }
+        if (!isNaN(w.humidity)) {
+            parts.push(`${t('humidity')} ${w.humidity}%`);
+        }
         this.weatherRow.textContent = parts.join('  ');
 
         this.warnRow.innerHTML = '';
@@ -107,19 +116,26 @@ export class ClockPanel {
         }
     }
 
-    /** 每帧/每秒调用: 同步模拟时间显示 */
     setTime(epochMs: number) {
+        this.lastEpochMs = epochMs;
+        const timeFmt = new Intl.DateTimeFormat(intlLocale(), {
+            timeZone: HK_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        });
+        const dateFmt = new Intl.DateTimeFormat(intlLocale(), {
+            timeZone: HK_TZ, year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
+        });
         this.timeEl.textContent = timeFmt.format(new Date(epochMs));
-        // 日期只在变化时更新
         const d = dateFmt.format(new Date(epochMs));
-        if (this.dateEl.textContent !== d) this.dateEl.textContent = d;
+        if (this.dateEl.textContent !== d) {
+            this.dateEl.textContent = d;
+        }
     }
 
     setLive(live: boolean) {
         this.isLive = live;
         this.badge.classList.toggle('live', live);
         this.badge.classList.toggle('replay', !live);
-        this.liveLabel.textContent = live ? '實時' : '回放';
+        this.liveLabel.textContent = live ? t('live') : t('replay');
         this.renderStatus();
     }
 
@@ -130,11 +146,11 @@ export class ClockPanel {
 
     private renderStatus() {
         if (!this.isLive) {
-            this.statusEl.textContent = '⏸ 回放模式 · 按計劃時刻表運行';
+            this.statusEl.textContent = t('statusReplay');
         } else if (this.statusEl.classList.contains('offline')) {
-            this.statusEl.textContent = '⚠ 實時數據連接中斷 · 顯示計劃時刻';
+            this.statusEl.textContent = t('statusOffline');
         } else {
-            this.statusEl.textContent = '✓ 已連接港鐵實時數據 (data.gov.hk)';
+            this.statusEl.textContent = t('statusLive');
         }
     }
 }

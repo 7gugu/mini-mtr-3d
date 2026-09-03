@@ -1,14 +1,16 @@
 // 站点悬停提示: 站名 + 途经线路色块列表
 
 import * as THREE from 'three';
-import { LineInfo, linesServingStationCode, stationDisplayName } from '../hk_mtr_data';
+import { LineInfo, lineDisplayName, linesServingStationCode, stationDisplayName } from '../hk_mtr_data';
 import { StationCluster } from '../trackLayout';
+import { getLocale, onLocaleChange, t } from '../i18n';
 
 export class StationPopup {
     private root: HTMLElement;
     private nameEl: HTMLElement;
     private linesEl: HTMLElement;
-    private lastCode = '';
+    private lastKey = '';
+    private lastCluster: StationCluster | null = null;
 
     public constructor() {
         this.root = document.createElement('div');
@@ -23,11 +25,19 @@ export class StationPopup {
         this.root.appendChild(this.linesEl);
 
         document.body.appendChild(this.root);
+
+        onLocaleChange(() => {
+            this.lastKey = '';
+            if (this.lastCluster) {
+                this.renderContent(this.lastCluster);
+            }
+        });
     }
 
     public hide() {
         this.root.classList.add('hidden-panel');
-        this.lastCode = '';
+        this.lastKey = '';
+        this.lastCluster = null;
     }
 
     public follow(
@@ -36,6 +46,7 @@ export class StationPopup {
         width: number,
         height: number
     ) {
+        this.lastCluster = cluster;
         this.renderContent(cluster);
 
         const v = new THREE.Vector3(cluster.cx, cluster.cy, 40);
@@ -53,13 +64,15 @@ export class StationPopup {
     }
 
     private renderContent(cluster: StationCluster) {
-        if (cluster.code === this.lastCode) {
+        const locale = getLocale();
+        const key = `${cluster.code}|${locale}`;
+        if (key === this.lastKey) {
             return;
         }
-        this.lastCode = cluster.code;
+        this.lastKey = key;
 
         const sample = cluster.points[0]?.name || cluster.code;
-        this.nameEl.textContent = stationDisplayName(sample);
+        this.nameEl.textContent = stationDisplayName(sample, locale);
 
         const lines = linesServingStationCode(cluster.code);
         this.linesEl.innerHTML = '';
@@ -69,7 +82,7 @@ export class StationPopup {
         if (lines.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'station-popup-line-row';
-            empty.textContent = '無線路資料';
+            empty.textContent = t('noLineData');
             this.linesEl.appendChild(empty);
         }
     }
@@ -84,7 +97,7 @@ export class StationPopup {
         row.appendChild(swatch);
 
         const label = document.createElement('span');
-        label.textContent = line.nameZh;
+        label.textContent = lineDisplayName(line, getLocale());
         row.appendChild(label);
         return row;
     }

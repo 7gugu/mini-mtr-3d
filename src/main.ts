@@ -12,6 +12,7 @@ import { StationPopup } from './ui/StationPopup';
 import { AboutPanel } from './ui/AboutPanel';
 import { getServiceDayStart, SERVICE_DAY_SPAN_MS, mapThemeAt, MapTheme } from './hktime';
 import { lineInfoMap, lineMetas, stationDisplayName } from './hk_mtr_data';
+import { getLocale, initI18n, onLocaleChange, t } from './i18n';
 import {
     clusterStations,
     interchangeCapsuleSize,
@@ -95,6 +96,8 @@ function addCircleStation(scene: THREE.Scene, x: number, y: number, cluster: Sta
 
 const AMAP_KEY = config.AMAP_KEY;
 
+initI18n();
+
 const MAP_STYLES: Record<MapTheme, string> = {
     day: 'amap://styles/whitesmoke',
     night: 'amap://styles/dark',
@@ -164,7 +167,7 @@ AMapLoader.load({
 
     const trackMeshes: THREE.Mesh[] = [];
     const stationMeshes: THREE.Mesh[] = [];
-    const stationMarkers: { marker: any; major: boolean; code: string }[] = []; // AMap.Text markers
+    const stationMarkers: { marker: any; major: boolean; code: string; sampleName: string }[] = []; // AMap.Text markers
 
     // 重要的站 (换乘锚点 + 线路端点): 低缩放级别下只显示这些站名
     const majorStations = new Set<string>();
@@ -328,7 +331,7 @@ AMapLoader.load({
             const lng = cluster.points.reduce((s, p) => s + p.location[0], 0) / cluster.points.length;
             const lat = cluster.points.reduce((s, p) => s + p.location[1], 0) / cluster.points.length;
             const textMarker = new AMap.Text({
-                text: stationDisplayName(sample.name),
+                text: stationDisplayName(sample.name, getLocale()),
                 anchor: 'bottom-center',
                 position: [lng, lat],
                 offset: new AMap.Pixel(0, -15),
@@ -348,7 +351,7 @@ AMapLoader.load({
             });
             setMarkerVisible(textMarker, isMajor || stationLabelsDetailed);
             map.add(textMarker);
-            stationMarkers.push({ marker: textMarker, major: isMajor, code: cluster.code });
+            stationMarkers.push({ marker: textMarker, major: isMajor, code: cluster.code, sampleName: sample.name });
         }
 
         // 5. 列车车队 (对象池, 每帧只渲染在场列车)
@@ -361,7 +364,18 @@ AMapLoader.load({
     const editorToggle = document.createElement('button');
     editorToggle.className = 'ui-button editor-toggle';
     editorToggle.textContent = '🛠';
-    editorToggle.title = '轨道/时刻表编辑器';
+    editorToggle.title = t('editorTitle');
+    onLocaleChange(() => {
+        editorToggle.title = t('editorTitle');
+        for (const { marker, sampleName } of stationMarkers) {
+            if (typeof marker.setText === 'function') {
+                marker.setText(stationDisplayName(sampleName, getLocale()));
+            } else {
+                marker.setOptions({ text: stationDisplayName(sampleName, getLocale()) });
+            }
+        }
+        document.title = `${t('appTitle')} — Hong Kong MTR in 3D`;
+    });
     editorToggle.onclick = () => {
         if (!editor) {
             editor = new Editor(map, AMap);

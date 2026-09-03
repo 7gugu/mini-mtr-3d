@@ -3,12 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MTR 3D Rail</title>
+    <title>mini mtr — Hong Kong MTR in 3D</title>
+    <meta name="description" content="A miniature 3D real-time visualization of the Hong Kong MTR network. Live trains, scrubbable timetable, and incident alerts — inspired by Mini Tokyo 3D.">
+    <meta name="keywords" content="mini mtr, Hong Kong MTR, 3D transit, realtime trains, Mini Tokyo 3D">
+    <meta name="author" content="7gugu">
+    <meta name="theme-color" content="#0f172a">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="mini mtr">
+    <meta property="og:title" content="mini mtr — Hong Kong MTR in 3D">
+    <meta property="og:description" content="Watch the Hong Kong MTR move in 3D: live trains, full-day playback, and network incidents.">
+    <meta property="og:url" content="https://7gugu.github.io/mini-mtr-3d/">
+    <meta property="og:image" content="https://7gugu.github.io/mini-mtr-3d/og.jpg">
+    <meta property="og:image:alt" content="mini mtr — glowing MTR lines and 3D trains on a dark Hong Kong map">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="zh_HK">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="mini mtr — Hong Kong MTR in 3D">
+    <meta name="twitter:description" content="A miniature 3D real-time visualization of the Hong Kong MTR network.">
+    <meta name="twitter:image" content="https://7gugu.github.io/mini-mtr-3d/og.jpg">
 </head>
 <body>
 <div id="container"></div>
 <script>
-    // 早期错误捕获 (诊断用): 记录加载期的 console.error 与未捕获异常
     window.__consoleErrors = [];
     window.addEventListener('error', function (e) { window.__consoleErrors.push('error: ' + e.message); });
     (function () {

@@ -1,8 +1,7 @@
-// src/ui/Timeline.ts
 // 底部居中: 当日全天进度条 (05:30 -> 次日 01:30), 可左右拖动回放。
-// 播放/暂停 + 倍速 + 回到实时。
 
-import { PlaybackController, SPEEDS } from '../PlaybackController';
+import { PlaybackController } from '../PlaybackController';
+import { getLocale, onLocaleChange, t, toggleLocale } from '../i18n';
 
 const POWER_SAVE_KEY = 'mini-mtr-power-save';
 
@@ -18,13 +17,13 @@ function writePowerSave(on: boolean) {
     try {
         localStorage.setItem(POWER_SAVE_KEY, on ? '1' : '0');
     } catch {
-        // 隐私模式等无法写入时忽略
+        // ignore
     }
 }
 
 function fmtHkClock(ms: number): string {
-    return new Intl.DateTimeFormat('zh-HK', {
-        timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false
+    return new Intl.DateTimeFormat(getLocale() === 'zh' ? 'zh-HK' : 'en-HK', {
+        timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false,
     }).format(new Date(ms));
 }
 
@@ -36,6 +35,7 @@ export class Timeline {
     private speedBtn: HTMLButtonElement;
     private liveBtn: HTMLButtonElement;
     private powerBtn: HTMLButtonElement;
+    private langBtn: HTMLButtonElement;
     private trackEl: HTMLElement;
     private fillEl: HTMLElement;
     private handleEl: HTMLElement;
@@ -52,17 +52,14 @@ export class Timeline {
         this.container = document.createElement('div');
         this.container.className = 'ui-panel timeline-panel';
 
-        // --- 上排: 播放控制 + 时间 ---
         const controls = document.createElement('div');
         controls.className = 'tl-controls';
 
         this.playBtn = document.createElement('button');
         this.playBtn.className = 'ui-button tl-btn';
-        this.playBtn.title = '播放 / 暫停';
         this.playBtn.onclick = () => {
             this.playback.togglePlay();
             if (!this.playback.isPlaying && this.playback.isLive) {
-                // 直播中暂停 -> 冻结为回放起点
                 this.playback.setLive(false);
             }
             this.refreshButtons();
@@ -71,33 +68,31 @@ export class Timeline {
 
         this.liveBtn = document.createElement('button');
         this.liveBtn.className = 'ui-button tl-btn live-btn';
-        this.liveBtn.textContent = '回到現在';
-        this.liveBtn.title = '回到實時狀態 (結合政府 API)';
         this.liveBtn.onclick = () => this.playback.goLive();
         controls.appendChild(this.liveBtn);
 
         this.speedBtn = document.createElement('button');
         this.speedBtn.className = 'ui-button tl-btn speed-btn';
-        this.speedBtn.title = '回放倍速';
         this.speedBtn.onclick = () => this.playback.cycleSpeed();
         controls.appendChild(this.speedBtn);
 
         this.powerBtn = document.createElement('button');
         this.powerBtn.className = 'ui-button tl-btn power-btn';
-        this.powerBtn.textContent = '省電';
-        this.powerBtn.title = '省電模式：全圖列車位置每秒更新一次';
         this.powerBtn.setAttribute('aria-pressed', 'false');
         this.powerBtn.onclick = () => {
             this.powerSave = !this.powerSave;
             writePowerSave(this.powerSave);
             this.syncPowerButton();
         };
-        this.syncPowerButton();
         controls.appendChild(this.powerBtn);
+
+        this.langBtn = document.createElement('button');
+        this.langBtn.className = 'ui-button tl-btn lang-btn';
+        this.langBtn.onclick = () => toggleLocale();
+        controls.appendChild(this.langBtn);
 
         this.container.appendChild(controls);
 
-        // --- 滑轨 ---
         this.trackEl = document.createElement('div');
         this.trackEl.className = 'tl-track';
 
@@ -113,28 +108,36 @@ export class Timeline {
         this.bubbleEl.className = 'tl-bubble';
         this.trackEl.appendChild(this.bubbleEl);
 
-        // 整块可拖拽 (含 label 区域)
         const hitArea = document.createElement('div');
         hitArea.className = 'tl-hit';
         hitArea.appendChild(this.trackEl);
         this.attachDrag(hitArea);
         this.container.appendChild(hitArea);
 
-        // --- 刻度标签 ---
         this.labelsEl = document.createElement('div');
         this.labelsEl.className = 'tl-labels';
         this.container.appendChild(this.labelsEl);
         this.buildTicks();
 
         document.body.appendChild(this.container);
+        this.applyLocale();
+        onLocaleChange(() => this.applyLocale());
+    }
+
+    private applyLocale() {
+        this.playBtn.title = t('playPause');
+        this.liveBtn.title = t('goLiveTitle');
+        this.speedBtn.title = t('speedTitle');
+        this.powerBtn.title = t('powerSaveTitle');
+        this.langBtn.title = t('langToggleTitle');
+        this.langBtn.textContent = t('langToggle');
+        this.syncPowerButton();
         this.refreshButtons();
     }
 
     private buildTicks() {
-        // 在滑轨上画每小时刻度; 每 3 小时一个标签
         const { rangeStart, rangeEnd } = this.playback;
         const span = rangeEnd - rangeStart;
-        // 对齐到整点 (香港时间): 找 rangeStart 之后的第一个整点
         const HK_OFF = 8 * 3600 * 1000;
         const firstHour = Math.ceil((rangeStart + HK_OFF) / 3600000) * 3600000 - HK_OFF;
         const frag = document.createDocumentFragment();
@@ -172,12 +175,16 @@ export class Timeline {
             this.render();
         });
         el.addEventListener('pointermove', (e) => {
-            if (!this.dragging) return;
+            if (!this.dragging) {
+                return;
+            }
             this.playback.seekRatio(ratioFromEvent(e));
             this.render();
         });
         const end = () => {
-            if (!this.dragging) return;
+            if (!this.dragging) {
+                return;
+            }
             this.dragging = false;
             this.bubbleEl.style.opacity = '0';
         };
@@ -188,17 +195,16 @@ export class Timeline {
     private syncPowerButton() {
         this.powerBtn.classList.toggle('active', this.powerSave);
         this.powerBtn.setAttribute('aria-pressed', String(this.powerSave));
-        this.powerBtn.textContent = this.powerSave ? '省電 · 開' : '省電';
+        this.powerBtn.textContent = this.powerSave ? t('powerSaveOn') : t('powerSave');
     }
 
     private refreshButtons() {
         this.playBtn.innerHTML = this.playback.isPlaying ? '⏸' : '▶';
         this.speedBtn.textContent = `${this.playback.speed}×`;
         this.liveBtn.classList.toggle('on-live', this.playback.isLive);
-        this.liveBtn.textContent = this.playback.isLive ? '● 實時中' : '回到現在';
+        this.liveBtn.textContent = this.playback.isLive ? t('onLive') : t('goLive');
     }
 
-    /** 每帧调用 */
     render() {
         const pct = (this.playback.ratio * 100).toFixed(3);
         this.fillEl.style.width = `${pct}%`;
@@ -206,7 +212,6 @@ export class Timeline {
         this.bubbleEl.style.left = `${pct}%`;
         this.bubbleEl.textContent = fmtHkClock(this.playback.currentTime);
         if (!this.dragging) {
-            // 倍速/播放状态变化时同步按钮
             this.refreshButtons();
         }
     }
