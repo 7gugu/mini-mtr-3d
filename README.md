@@ -1,5 +1,7 @@
 # mini mtr
 
+<img width="1920" height="929" alt="image" src="https://github.com/user-attachments/assets/92f86b94-6241-4ce6-85f3-710dea2a2c6a" />
+
 A miniature **3D real-time visualization of the Hong Kong MTR network**, inspired by [Mini Tokyo 3D](https://minitokyo3d.com/).
 
 [中文说明](./README_zh.md)
